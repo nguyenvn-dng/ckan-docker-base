@@ -27,7 +27,6 @@ ENV SRC_DIR=${APP_DIR}/src
 ENV CKAN_INI=${APP_DIR}/ckan.ini
 ENV PIP_SRC=${SRC_DIR}
 ENV CKAN_STORAGE_PATH=/var/lib/ckan
-ENV GIT_URL=https://github.com/ckan/ckan.git
 
 # Customize these in the environment (.env) file if needed
 ENV CKAN_SITE_URL=http://localhost:5000
@@ -66,14 +65,18 @@ RUN apt-get install --no-install-recommends -y \
 # Create the src directory
 RUN mkdir -p ${SRC_DIR}
 
+# Copy local CKAN source code
+COPY ckan ${SRC_DIR}/ckan
+
 # Install uwsgi, the CKAN application, the dependency packages for CKAN plus some confiquration
 RUN pip3 install -U pip && \
     pip3 install -U "setuptools>=70.0.0" && \
     pip3 install uwsgi && \
-    cd ${SRC_DIR} && \
-    pip3 install -e git+${GIT_URL}@${CKAN_REF}#egg=ckan && \
-    cd ckan && \
+    cd ${SRC_DIR}/ckan && \
+    pip3 install -e . && \
     pip3 install --no-binary markdown -r requirements.txt && \
+    # Install performance dependencies
+    pip3 install redis dogpile.cache && \
     # Install CKAN envvars to support loading config from environment variables
     pip3 install -e git+https://github.com/okfn/ckanext-envvars.git@v0.0.6#egg=ckanext-envvars && \
     # Create and update CKAN config
@@ -88,8 +91,28 @@ RUN groupadd -g 502 ckan-sys && \
 
 COPY setup/prerun.py ${APP_DIR}
 COPY setup/start_ckan.sh ${APP_DIR}
-ADD https://raw.githubusercontent.com/ckan/ckan/${CKAN_REF}/wsgi.py ${APP_DIR}
-RUN chmod 644 ${APP_DIR}/wsgi.py
+COPY ckan/wsgi.py ${APP_DIR}
+RUN chmod 644 ${APP_DIR}/wsgi.py && \
+    sed -i 's/\r$//' ${APP_DIR}/start_ckan.sh && \
+    chmod +x ${APP_DIR}/start_ckan.sh
+
+# Copy tất cả plugin custom
+COPY plugins ${SRC_DIR}/plugins
+
+# Install tất cả plugin (nếu có requirements.txt thì cài thêm)
+RUN set -ex \
+    && cd ${SRC_DIR} \
+    && for d in plugins/*; do \
+        if [ -d "$d" ]; then \
+            echo "Installing plugin: $d"; \
+            if [ -f "$d/setup.py" ]; then \
+                pip3 install -e "$d"; \
+            fi; \
+            if [ -f "$d/requirements.txt" ]; then \
+                pip3 install -r "$d/requirements.txt"; \
+            fi; \
+        fi; \
+    done
 
 # Create entrypoint directory for children image scripts
 RUN mkdir -p /docker-entrypoint.d && chmod 755 /docker-entrypoint.d
@@ -103,7 +126,9 @@ RUN chown -R ckan-sys:ckan-sys ${APP_DIR} && \
 RUN chown ckan:ckan-sys ${APP_DIR}/ckan.ini && \
     chown -R ckan:ckan-sys ${APP_DIR}/src && \
     mkdir -p ${CKAN_STORAGE_PATH} && \
-    chown -R ckan:ckan-sys ${CKAN_STORAGE_PATH}
+    chown -R ckan:ckan-sys ${CKAN_STORAGE_PATH} && \
+    mkdir -p /tmp/sessions/data /tmp/sessions/lock && \
+    chown -R ckan:ckan-sys /tmp/sessions
 
 USER ckan
 
@@ -128,7 +153,7 @@ ENV SRC_EXTENSIONS_DIR=${APP_DIR}/src_extensions
 USER root
 
 RUN cd ${SRC_DIR}/ckan && \
-pip3 install -r https://raw.githubusercontent.com/ckan/ckan/${CKAN_REF}/dev-requirements.txt
+pip3 install -r dev-requirements.txt
 
 COPY --chown=ckan-sys:ckan-sys setup/unsafe.cert setup/unsafe.key setup/start_ckan_development.sh setup/install_src.sh ${APP_DIR}
 
@@ -137,7 +162,11 @@ RUN mkdir -p ${SRC_EXTENSIONS_DIR} /var/lib/ckan && \
     chown -R ckan-sys:ckan-sys ${SRC_EXTENSIONS_DIR} && \
     chown -R ckan:ckan-sys /var/lib/ckan/ && \
     chown ckan:ckan-sys /srv/app/ && \
-    chmod 775 ${SRC_EXTENSIONS_DIR}
+    chmod 775 ${SRC_EXTENSIONS_DIR} && \
+    sed -i 's/\r$//' ${APP_DIR}/start_ckan_development.sh && \
+    sed -i 's/\r$//' ${APP_DIR}/install_src.sh && \
+    chmod +x ${APP_DIR}/start_ckan_development.sh && \
+    chmod +x ${APP_DIR}/install_src.sh
 
 USER ckan
 

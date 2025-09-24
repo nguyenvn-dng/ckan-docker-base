@@ -33,15 +33,34 @@ then
     done
 fi
 
-# Define default UWSGI options
+# Define optimized UWSGI options
 DEFAULT_UWSGI_OPTS="--socket /tmp/uwsgi.sock \
                     --wsgi-file /srv/app/wsgi.py \
                     --module wsgi:application \
                     --http [::]:5000 \
                     --master --enable-threads \
                     --lazy-apps \
-                    -p 2 -L -b 32768 --vacuum \
-                    --harakiri ${UWSGI_HARAKIRI:-60}"
+                    --processes ${UWSGI_WORKERS:-4} \
+                    --threads 2 \
+                    --buffer-size ${UWSGI_BUFFER_SIZE:-32768} \
+                    --listen ${UWSGI_LISTEN:-1000} \
+                    --max-requests ${UWSGI_MAX_REQUESTS:-1000} \
+                    --max-worker-lifetime ${UWSGI_MAX_WORKER_LIFETIME:-3600} \
+                    --cheaper-algo busyness \
+                    --cheaper ${UWSGI_CHEAPER:-2} \
+                    --cheaper-initial ${UWSGI_CHEAPER_INITIAL:-2} \
+                    --cheaper-overload ${UWSGI_CHEAPER_OVERLOAD:-30} \
+                    --cheaper-step 1 \
+                    --cheaper-busyness-multiplier 20 \
+                    --cheaper-busyness-min 10 \
+                    --cheaper-busyness-max 70 \
+                    --vacuum \
+                    --die-on-term \
+                    --need-app \
+                    --disable-logging \
+                    --log-4xx \
+                    --log-5xx \
+                    --harakiri ${UWSGI_HARAKIRI:-300}"
 
 # Use UWSGI_OPTS from environment if set, otherwise use defaults
 UWSGI_OPTS="${UWSGI_OPTS:-$DEFAULT_UWSGI_OPTS}"

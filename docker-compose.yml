@@ -1,0 +1,167 @@
+version: '3.8'
+
+services:
+  # # PostgreSQL database
+  # db:
+  #   image: postgres:15-alpine
+  #   container_name: ckan_db
+  #   environment:
+  #     POSTGRES_DB: ckan
+  #     POSTGRES_USER: ckan
+  #     POSTGRES_PASSWORD: ckan
+  #     POSTGRES_HOST_AUTH_METHOD: trust
+  #   volumes:
+  #     - pg_data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U ckan -d ckan"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 5
+
+  # # Solr search engine
+  # solr:
+  #   image: solr:8-slim
+  #   container_name: ckan_solr
+  #   volumes:
+  #     - solr_data:/var/solr
+  #   ports:
+  #     - "8983:8983"
+  #   command:
+  #     - solr-precreate
+  #     - ckan
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "curl -f http://localhost:8983/solr/ckan/admin/ping || exit 1"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 5
+
+  # # Redis cache
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: ckan_redis
+  #   volumes:
+  #     - redis_data:/data
+  #   ports:
+  #     - "6379:6379"
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 5
+
+  # CKAN application
+  ckan:
+    image: ckan/ckan-base:2.11.3
+    container_name: ckan_app
+    environment:
+      # Database
+      CKAN_SQLALCHEMY_URL: postgresql://kong:kong@192.168.88.100:5431/ckan_default?sslmode=disable
+      CKAN_DATASTORE_WRITE_URL: postgresql://kong:kong@192.168.88.100:5431/datastore_default?sslmode=disable
+      CKAN_DATASTORE_READ_URL: postgresql://ckan:ckan@192.168.88.100:5431/datastore_default?sslmode=disable
+      
+      # Redis
+      CKAN_REDIS_URL: redis://192.168.88.100:9379/1
+      
+      # Solr
+      CKAN_SOLR_URL: http://192.168.88.100:8983/solr/ckan
+      
+      # Site settings
+      CKAN_SITE_URL: http://localhost:5000
+      CKAN_SITE_ID: default
+      
+      # Plugins
+      CKAN__PLUGINS: "image_view text_view datatables_view datastore envvars activity"
+      
+      # Storage
+      CKAN_STORAGE_PATH: /var/lib/ckan
+      
+      # Security
+      CKAN___BEAKER__SESSION__SECRET: "your-secret-key-here"
+      CKAN__API_TOKEN__JWT__ENCODE__SECRET: "your-jwt-secret-here"
+      CKAN__API_TOKEN__JWT__DECODE__SECRET: "your-jwt-secret-here"
+      
+      # Performance Optimization
+      UWSGI_HARAKIRI: 300
+      UWSGI_WORKERS: 4
+      UWSGI_BUFFER_SIZE: 32768
+      UWSGI_MAX_REQUESTS: 1000
+      UWSGI_MAX_WORKER_LIFETIME: 3600
+      UWSGI_CHEAPER: 2
+      UWSGI_CHEAPER_INITIAL: 2
+      UWSGI_CHEAPER_OVERLOAD: 30
+      
+      # Python Optimization  
+      PYTHONUNBUFFERED: 1
+      PYTHONDONTWRITEBYTECODE: 1
+      PYTHONOPTIMIZE: 1
+      
+      # CKAN Performance
+      CKAN___BEAKER__SESSION__TYPE: database
+      CKAN___BEAKER__SESSION__DATA_DIR: /tmp/sessions/data
+      CKAN___BEAKER__SESSION__LOCK_DIR: /tmp/sessions/lock
+      CKAN___BEAKER__SESSION__TIMEOUT: 3600
+      CKAN__SEARCH__SHOW_ALL_TYPES: false
+      CKAN__CACHE__ENABLED: true
+      CKAN__CACHE__CONFIG: "dogpile.cache.redis"
+      CKAN__CACHE__ARGUMENTS__HOST: "192.168.88.100"
+      CKAN__CACHE__ARGUMENTS__PORT: 9379
+      CKAN__CACHE__ARGUMENTS__DB: 2
+      
+      # Template Caching
+      CKAN__TEMPLATE_CACHE_ENABLED: true
+      
+      # SMTP (optional - for email notifications)
+      # CKAN_SMTP_SERVER: smtp.gmail.com
+      # CKAN_SMTP_STARTTLS: True
+      # CKAN_SMTP_USER: your-email@gmail.com
+      # CKAN_SMTP_PASSWORD: your-password
+      # CKAN_SMTP_MAIL_FROM: your-email@gmail.com
+      
+    volumes:
+      - ckan_storage:/var/lib/ckan
+    ports:
+      - "5000:5000"
+    # depends_on:
+    #   db:
+    #     condition: service_healthy
+    #   solr:
+    #     condition: service_healthy
+    #   redis:
+    #     condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/api/3/action/status_show || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # # DataPusher (optional - for CSV data processing)
+  # datapusher:
+  #   image: ckan/ckan-base-datapusher:0.0.21
+  #   container_name: ckan_datapusher
+  #   ports:
+  #     - "8800:8800"
+  #   environment:
+  #     DATAPUSHER_MAX_CONTENT_LENGTH: 10485760
+  #     DATAPUSHER_CHUNK_SIZE: 16384
+  #     DATAPUSHER_CHUNK_INSERT_TIMEOUT: 5
+  #     DATAPUSHER_DOWNLOAD_TIMEOUT: 30
+  #     DATAPUSHER_SSL_VERIFY: False
+  #     DATAPUSHER_REWRITE_RESOURCES: True
+  #     DATAPUSHER_REWRITE_URL: http://ckan:5000
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "curl -f http://localhost:8800/ || exit 1"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 5
+
+volumes:
+  pg_data:
+  solr_data:
+  redis_data:
+  ckan_storage:
+
+networks:
+  default:
+    name: ckan_network
