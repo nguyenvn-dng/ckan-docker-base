@@ -52,7 +52,7 @@ RUN dpkg-reconfigure --frontend=noninteractive locales
 RUN update-locale LANG=${LC_ALL}
 
 # Install system libraries
-RUN apt-get install --no-install-recommends -y \
+RUN apt-get install --no-install-recommends -y procps supervisor \
         apt-utils \
         git \
         libpq-dev \
@@ -67,6 +67,8 @@ RUN mkdir -p ${SRC_DIR}
 
 # Copy local CKAN source code
 COPY ckan ${SRC_DIR}/ckan
+
+COPY ckan_harvesting.conf /etc/supervisor/conf.d/ckan_harvesting.conf
 
 # Install uwsgi, the CKAN application, the dependency packages for CKAN plus some confiquration
 RUN pip3 install -U pip && \
