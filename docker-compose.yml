@@ -28,6 +28,16 @@ services:
 
       CKAN__LOCALE_DEFAULT: vi
       
+      # Harvest Configuration
+      CKAN__HARVEST__MQ__TYPE: redis
+      CKAN__HARVEST__MQ__HOSTNAME: 192.168.88.100
+      CKAN__HARVEST__MQ__PORT: 9379
+      CKAN__HARVEST__MQ__REDIS_DB: 0
+      CKAN__HARVEST__LOG_LEVEL: info
+      CKAN__HARVEST__LOG_TIMEFRAME: 30
+      CKAN__HARVEST__STATUS_MAIL__ERRORED: false
+      CKAN__HARVEST__TIMEOUT: 1440
+      
       # Storage
       CKAN_STORAGE_PATH: /var/lib/ckan
       
@@ -67,14 +77,21 @@ services:
       CKAN__TEMPLATE_CACHE_ENABLED: true
       
       # SMTP (optional - for email notifications)
-      # CKAN_SMTP_SERVER: smtp.gmail.com
-      # CKAN_SMTP_STARTTLS: True
-      # CKAN_SMTP_USER: your-email@gmail.com
-      # CKAN_SMTP_PASSWORD: your-password
-      # CKAN_SMTP_MAIL_FROM: your-email@gmail.com
+      CKAN_SMTP_SERVER: smtp.gmail.com
+      CKAN_SMTP_STARTTLS: True
+      CKAN_SMTP_USER: ioc.spnt@gmail.com
+      CKAN_SMTP_PASSWORD: yxhv lkce lcrk apgb
+      CKAN_SMTP_MAIL_FROM: ioc.spnt@gmail.com
       
     volumes:
-      - ckan_storage:/var/lib/ckan
+      # Mount storage and logs to host filesystem for easy access
+      - ./data/ckan_storage:/var/lib/ckan
+      - ./data/ckan_logs:/var/log/ckan
+      # Mount setup scripts for quick testing without rebuild
+      - ./ckan-2.11/setup/harvest_run_wrapper.sh:/srv/app/harvest_run_wrapper.sh:ro
+      - ./ckan-2.11/setup/harvest_cleanup_wrapper.sh:/srv/app/harvest_cleanup_wrapper.sh:ro
+      - ./ckan-2.11/setup/ckan_harvester_cron.sh:/srv/app/ckan_harvester_cron.sh:ro
+      - ./ckan-2.11/setup/start_ckan_production.sh:/srv/app/start_ckan_production.sh:ro
     ports:
       - "5000:5000"
     healthcheck:
@@ -108,3 +125,4 @@ volumes:
   solr_data:
   redis_data:
   ckan_storage:
+  ckan_logs:

@@ -52,7 +52,7 @@ RUN dpkg-reconfigure --frontend=noninteractive locales
 RUN update-locale LANG=${LC_ALL}
 
 # Install system libraries
-RUN apt-get install --no-install-recommends -y procps supervisor \
+RUN apt-get install --no-install-recommends -y procps supervisor cron \
         apt-utils \
         git \
         libpq-dev \
@@ -61,6 +61,10 @@ RUN apt-get install --no-install-recommends -y procps supervisor \
         libtool \
         patch \
         wget
+
+# Create log directory for CKAN
+RUN mkdir -p /var/log/ckan && \
+    chmod 755 /var/log/ckan
 
 # Create the src directory
 RUN mkdir -p ${SRC_DIR}
@@ -93,10 +97,25 @@ RUN groupadd -g 502 ckan-sys && \
 
 COPY setup/prerun.py ${APP_DIR}
 COPY setup/start_ckan.sh ${APP_DIR}
+COPY setup/start_ckan_production.sh ${APP_DIR}
+COPY setup/start_ckan_smart.sh ${APP_DIR}
+COPY setup/ckan_harvester_cron.sh ${APP_DIR}
+COPY setup/harvest_run_wrapper.sh ${APP_DIR}
+COPY setup/harvest_cleanup_wrapper.sh ${APP_DIR}
 COPY ckan/wsgi.py ${APP_DIR}
 RUN chmod 644 ${APP_DIR}/wsgi.py && \
     sed -i 's/\r$//' ${APP_DIR}/start_ckan.sh && \
-    chmod +x ${APP_DIR}/start_ckan.sh
+    sed -i 's/\r$//' ${APP_DIR}/start_ckan_production.sh && \
+    sed -i 's/\r$//' ${APP_DIR}/start_ckan_smart.sh && \
+    sed -i 's/\r$//' ${APP_DIR}/ckan_harvester_cron.sh && \
+    sed -i 's/\r$//' ${APP_DIR}/harvest_run_wrapper.sh && \
+    sed -i 's/\r$//' ${APP_DIR}/harvest_cleanup_wrapper.sh && \
+    chmod +x ${APP_DIR}/start_ckan.sh && \
+    chmod +x ${APP_DIR}/start_ckan_production.sh && \
+    chmod +x ${APP_DIR}/start_ckan_smart.sh && \
+    chmod +x ${APP_DIR}/ckan_harvester_cron.sh && \
+    chmod +x ${APP_DIR}/harvest_run_wrapper.sh && \
+    chmod +x ${APP_DIR}/harvest_cleanup_wrapper.sh
 
 # Copy tất cả plugin custom
 COPY plugins ${SRC_DIR}/plugins
@@ -130,13 +149,23 @@ RUN chown ckan:ckan-sys ${APP_DIR}/ckan.ini && \
     mkdir -p ${CKAN_STORAGE_PATH} && \
     chown -R ckan:ckan-sys ${CKAN_STORAGE_PATH} && \
     mkdir -p /tmp/sessions/data /tmp/sessions/lock && \
-    chown -R ckan:ckan-sys /tmp/sessions
+    chown -R ckan:ckan-sys /tmp/sessions && \
+    chown -R ckan:ckan-sys /var/log/ckan
 
-USER ckan
+# Note: Starting as root to allow Supervisor and Cron to start if harvest plugin is enabled
+# The smart start script will handle user switching appropriately
+# Standard mode will run as ckan user
+# Production mode (with harvest) needs root for supervisor/cron, but runs workers as ckan user
+USER root
 
 EXPOSE 5000
 
-CMD ["/srv/app/start_ckan.sh"]
+# Smart start script - automatically detects harvest plugin and uses appropriate start mode
+CMD ["/srv/app/start_ckan_smart.sh"]
+
+# Alternative commands you can use in docker-compose.yml:
+# For standard mode: command: ["su", "-", "ckan", "-c", "/srv/app/start_ckan.sh"]
+# For production mode with harvest: command: ["/srv/app/start_ckan_production.sh"]
 
 
 # ┌─────────────────────────────────────────────────────────────┐
